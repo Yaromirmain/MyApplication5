@@ -1,79 +1,98 @@
 package com.example.myapplication5;
 
 import android.os.Bundle;
-import android.os.Handler;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import javax.net.ssl.HttpsURLConnection;
+import java.util.Scanner;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
 
-    private TextView counter1TextView;
-    private TextView counter2TextView;
-    private Button startButton;
-    private Button stopButton;
-    private Handler handler = new Handler();
-    private int counter1 = 0;
-    private int counter2 = 0;
-    private boolean isRunning = false;
+    private EditText countryInput;
+    private Button searchButton;
+    private TextView resultTextView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        counter1TextView = findViewById(R.id.counter1TextView);
-        counter2TextView = findViewById(R.id.counter2TextView);
-        startButton = findViewById(R.id.startButton);
-        stopButton = findViewById(R.id.stopButton);
+        countryInput = findViewById(R.id.countryInput);
+        searchButton = findViewById(R.id.searchButton);
+        resultTextView = findViewById(R.id.resultTextView);
 
-        startButton.setOnClickListener(new View.OnClickListener() {
+        searchButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                startCounters();
-            }
-        });
-
-        stopButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                stopCounters();
+                String country = countryInput.getText().toString();
+                if (!country.isEmpty()) {
+                    fetchCountryInfo(country);
+                }
             }
         });
     }
 
-    private void startCounters() {
-        isRunning = true;
-        counter1 = 0;
-        counter2 = 0;
-        updateCounters();
-    }
-
-    private void stopCounters() {
-        isRunning = false;
-        handler.removeCallbacks(updateRunnable);
-    }
-
-    private void updateCounters() {
-        if (isRunning) {
-            counter1++;
-            counter2++;
-            counter1TextView.setText("Counter 1: " + counter1);
-            counter2TextView.setText("Counter 2: " + counter2);
-
-            if (counter1 <= 30 && counter2 <= 30) {
-                handler.postDelayed(updateRunnable, 1000);
-            } else {
-                isRunning = false;
+    private void fetchCountryInfo(final String country) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpsURLConnection connection;
+                URL url = null;
+                try {
+                    url = new URL("https://restcountries.com/v3.1/name/" + country.toLowerCase());
+                } catch (MalformedURLException e) {
+                    throw new RuntimeException(e);
+                }
+                try {
+                    connection = (HttpsURLConnection) url.openConnection();
+                    connection.setConnectTimeout(10000);
+                    connection.connect();
+                    Scanner sc = new Scanner(connection.getInputStream());
+                    StringBuilder result = new StringBuilder();
+                    while (sc.hasNextLine()) {
+                        result.append(sc.nextLine());
+                    }
+                    final String jsonResponse = result.toString();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                JSONArray jsonArray = new JSONArray(jsonResponse);
+                                if (jsonArray.length() > 0) {
+                                    JSONObject countryInfo = jsonArray.getJSONObject(0);
+                                    JSONObject nameObject = countryInfo.getJSONObject("name");
+                                    String countryName = nameObject.getString("common");
+                                    JSONArray capitalArray = countryInfo.getJSONArray("capital");
+                                    String capital = capitalArray.getString(0);
+                                    String region = countryInfo.getString("region");
+                                    resultTextView.setText("Страна: " + countryName + "\nСтолица: " + capital + "\nРегион: " + region);
+                                } else {
+                                    resultTextView.setText("Страна не найдена.");
+                                }
+                            } catch (JSONException e) {
+                                resultTextView.setText("Error parsing JSON: " + e.getMessage());
+                            }
+                        }
+                    });
+                } catch (IOException e) {
+                    final String errorMessage = "Что-то пошло не так, проверьте соединение: " + e.getMessage();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            resultTextView.setText(errorMessage);
+                        }
+                    });
+                }
             }
-        }
+        }).start();
     }
-
-    private Runnable updateRunnable = new Runnable() {
-        @Override
-        public void run() {
-            updateCounters();
-        }
-    };
 }
